@@ -1,9 +1,11 @@
 package com.cumulativecannons;
 
+import com.cumulativecannons.compat.ExplosionOverhaulCompat;
 import com.cumulativecannons.jet.JetMaterialReloadListener;
 import com.cumulativecannons.network.ModPayloads;
 import com.cumulativecannons.registry.ModBlockEntities;
 import com.cumulativecannons.registry.ModBlocks;
+import com.cumulativecannons.registry.ModEffects;
 import com.cumulativecannons.registry.ModEntities;
 import com.cumulativecannons.registry.ModItems;
 import com.cumulativecannons.registry.ModParticles;
@@ -34,12 +36,14 @@ public class CumulativeCannons {
         ModBlockEntities.register(modEventBus);
         ModEntities.register(modEventBus);
         ModParticles.register(modEventBus);
+        ModEffects.register(modEventBus);
 
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(this::addCreative);
         modEventBus.addListener(ModPayloads::register);
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
         NeoForge.EVENT_BUS.addListener(this::addReloadListeners);
+        NeoForge.EVENT_BUS.addListener(ExplosionOverhaulCompat::onServerStarted);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

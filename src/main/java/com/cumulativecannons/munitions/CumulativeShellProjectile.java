@@ -1,11 +1,13 @@
 package com.cumulativecannons.munitions;
 
 import com.cumulativecannons.Config;
+import com.cumulativecannons.compat.ExplosionOverhaulCompat;
 import com.cumulativecannons.jet.JetActionSource;
 import com.cumulativecannons.jet.JetMaterialCosts;
 import com.cumulativecannons.network.ImpactShakePayload;
 import com.cumulativecannons.network.JetBeamPayload;
 import com.cumulativecannons.registry.ModBlocks;
+import com.cumulativecannons.registry.ModEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleOptions;
@@ -15,13 +17,19 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 import rbasamoyai.createbigcannons.config.CBCCfgMunitions;
@@ -46,6 +54,11 @@ import team.creative.littletiles.common.block.entity.BETiles;
 import team.creative.littletiles.common.grid.LittleGrid;
 import team.creative.littletiles.common.math.box.LittleBox;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
 public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
     private static final double EFFECT_RADIUS = 200.0D;
 
@@ -68,6 +81,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
     private BlockState lastSolidState;
     private boolean exitSpawned;
     private int particlesThisTick;
+    private final Map<UUID, Float> shrapnelDamage = new HashMap<>();
 
     public CumulativeShellProjectile(EntityType<? extends CumulativeShellProjectile> type, Level level) {
         super(type, level);
@@ -109,6 +123,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         lastSolidState = null;
         exitSpawned = false;
         particlesThisTick = 0;
+        shrapnelDamage.clear();
 
         if (Math.abs(direction.x) >= Math.abs(direction.y) && Math.abs(direction.x) >= Math.abs(direction.z)) {
             axis = Direction.Axis.X;
@@ -143,6 +158,13 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         }
         Vec3 back = Vec3.atLowerCornerOf(hit.getDirection().getNormal());
         entryPos = hit.getLocation().add(back.scale(0.35D));
+        if (level() instanceof ServerLevel serverLevel) {
+            damageJetPath(serverLevel, beamStart, beamDir, predictLength());
+            damageShockwave(serverLevel, hit.getLocation(), Config.SHOCKWAVE_RADIUS.get(),
+                    Config.SHOCKWAVE_ENTRY_DAMAGE.get().floatValue());
+            damageRicochetShrapnel(serverLevel, hit.getLocation(), back, 24, 0.9D);
+            spawnBlackShrapnel(serverLevel, hit.getLocation(), back, 24, 0.9D);
+        }
         spawnImpactEffect(hit.getLocation(), state, hit.getDirection());
         if (predicted.exit() && level() instanceof ServerLevel serverLevel) {
             spawnExitEffect(serverLevel, Vec3.atCenterOf(predicted.exitPos), predicted.lastSolid);
@@ -177,6 +199,26 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             lastSolid = state;
         }
         return PredictedExit.NONE;
+    }
+
+    private int predictLength() {
+        double remaining = Config.JET_BUDGET.get();
+        for (int i = 0; i < maxBlocks; i++) {
+            BlockPos pos = startPos.relative(axisDirection(), i);
+            BlockState state = level().getBlockState(pos);
+            if (state.isAir() || !state.getFluidState().isEmpty()) {
+                return i;
+            }
+            if (Config.JET_RESPECT_PROTECTION.get() && state.getDestroySpeed(level(), pos) < 0) {
+                return i;
+            }
+            double cost = JetMaterialCosts.getCost(state);
+            if (remaining < cost) {
+                return i;
+            }
+            remaining -= cost;
+        }
+        return maxBlocks;
     }
 
     private void spawnImpactEffect(Vec3 pos, BlockState state, Direction face) {
@@ -221,6 +263,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             }
         }
 
+        ExplosionOverhaulCompat.triggerConcussion(serverLevel, pos);
         serverLevel.playSound(null, pos.x, pos.y, pos.z, CBCSoundEvents.SHELL_EXPLOSION.getMainEvent(),
                 SoundSource.BLOCKS, 2.0F, 0.9F + random.nextFloat() * 0.1F);
         sendShake(serverLevel, pos);
@@ -229,6 +272,12 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
 
     private void spawnExitEffect(ServerLevel serverLevel, Vec3 pos, BlockState state) {
         exitPos = pos;
+        if (Config.DAMAGE_ENABLED.get()) {
+            damageShockwave(serverLevel, pos, Config.SHOCKWAVE_RADIUS.get(),
+                    Config.SHOCKWAVE_EXIT_DAMAGE.get().floatValue());
+            damageRicochetShrapnel(serverLevel, pos, beamDir, 48, 1.5D);
+            spawnBlackShrapnel(serverLevel, pos, beamDir, 48, 1.5D);
+        }
         if (!Config.JET_EFFECTS_ENABLED.get()) {
             return;
         }
@@ -273,6 +322,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
 
         sendBeam(serverLevel, pos, beamDir, 15.0D, 0.09F, 3);
         spawnJetSmokeStrip(serverLevel, pos, beamDir, 15.0D);
+        ExplosionOverhaulCompat.triggerConcussion(serverLevel, pos);
         serverLevel.playSound(null, pos.x, pos.y, pos.z, CBCSoundEvents.SHELL_EXPLOSION.getMainEvent(),
                 SoundSource.BLOCKS, 1.2F, 1.0F + random.nextFloat() * 0.1F);
         placeLight(serverLevel, BlockPos.containing(pos));
@@ -296,6 +346,172 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
                         120 + random.nextInt(80), 0.9F), point.add(offset(Vec3.ZERO, 0.1D)), velocity);
             }
         }
+    }
+
+    private void spawnBlackShrapnel(ServerLevel serverLevel, Vec3 origin, Vec3 direction, int count, double speed) {
+        if (!Config.JET_EFFECTS_ENABLED.get() || count <= 0) {
+            return;
+        }
+        BlockState shard = Blocks.BLACK_CONCRETE.defaultBlockState();
+        for (int i = 0; i < scaledCount(count); i++) {
+            Vec3 velocity = coneVelocity(direction, Config.SHRAPNEL_ANGLE.get(),
+                    speed * (0.6D + random.nextDouble() * 0.8D));
+            sendParticle(serverLevel, new DebrisMatterParticleData(false, true, shard),
+                    offset(origin, 0.12D), velocity);
+        }
+    }
+
+    private void damageJetPath(ServerLevel serverLevel, Vec3 start, Vec3 direction, int length) {
+        if (!Config.DAMAGE_ENABLED.get() || length <= 0 || direction.lengthSqr() < 1.0E-6D) {
+            return;
+        }
+        Vec3 end = start.add(direction.scale(length));
+        AABB area = new AABB(start, end).inflate(0.75D);
+        for (LivingEntity living : serverLevel.getEntitiesOfClass(LivingEntity.class, area)) {
+            if (!living.isAlive()) {
+                continue;
+            }
+            Vec3 delta = living.getBoundingBox().getCenter().subtract(start);
+            double distanceAlong = delta.dot(direction);
+            if (distanceAlong < 0.0D || distanceAlong > length + 0.3D) {
+                continue;
+            }
+            if (delta.subtract(direction.scale(distanceAlong)).length() > 0.55D) {
+                continue;
+            }
+            float damage = (float) (Config.JET_DAMAGE.get()
+                    * (1.0D - 0.6D * distanceAlong / Math.max(0.001D, length)));
+            hurt(living, serverLevel.damageSources().magic(), damage);
+            living.addEffect(new MobEffectInstance(ModEffects.BLEEDING, Config.BLEED_DURATION.get(), 0));
+        }
+    }
+
+    private void damageShockwave(ServerLevel serverLevel, Vec3 center, double radius, float maxDamage) {
+        if (!Config.DAMAGE_ENABLED.get() || radius <= 0.0D || maxDamage <= 0.0F) {
+            return;
+        }
+        AABB area = new AABB(center.x - radius, center.y - radius, center.z - radius,
+                center.x + radius, center.y + radius, center.z + radius);
+        for (LivingEntity living : serverLevel.getEntitiesOfClass(LivingEntity.class, area)) {
+            if (!living.isAlive()) {
+                continue;
+            }
+            double distance = living.getBoundingBox().getCenter().distanceTo(center);
+            if (distance > radius) {
+                continue;
+            }
+            float damage = (float) (maxDamage * (1.0D - distance / radius));
+            if (damage <= 0.5F) {
+                continue;
+            }
+            hurt(living, serverLevel.damageSources().explosion(this, null), damage);
+            Vec3 push = living.position().subtract(center);
+            if (push.lengthSqr() > 1.0E-6D) {
+                push = push.normalize().scale(0.5D * (1.0D - distance / radius));
+                living.push(push.x, 0.15D, push.z);
+            }
+        }
+    }
+
+    private void damageRicochetShrapnel(ServerLevel serverLevel, Vec3 origin, Vec3 direction,
+                                        int count, double speed) {
+        if (!Config.DAMAGE_ENABLED.get() || count <= 0 || direction.lengthSqr() < 1.0E-6D) {
+            return;
+        }
+
+        Vec3 baseDirection = direction.normalize();
+        int maxBounces = Config.SHRAPNEL_BOUNCES.get();
+        double range = Config.SHRAPNEL_RANGE.get();
+
+        for (int i = 0; i < count; i++) {
+            Vec3 dir = coneVelocity(baseDirection, Config.SHRAPNEL_ANGLE.get(), 1.0D).normalize();
+            Vec3 pos = origin.add(offset(Vec3.ZERO, 0.1D));
+
+            for (int bounce = 0; bounce <= maxBounces; bounce++) {
+                Vec3 end = pos.add(dir.scale(range));
+                BlockHitResult blockHit = serverLevel.clip(new ClipContext(
+                        pos, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+                double blockDistance = blockHit.getType() == HitResult.Type.BLOCK
+                        ? pos.distanceTo(blockHit.getLocation())
+                        : range;
+
+                LivingEntity hit = findEntityAlong(serverLevel, pos, dir, blockDistance);
+                if (hit != null) {
+                    damageWithShrapnel(serverLevel, hit, dir);
+                    spawnShardParticle(serverLevel, hit.getBoundingBox().getCenter(), dir, speed);
+                    break;
+                }
+
+                if (blockHit.getType() != HitResult.Type.BLOCK) {
+                    break;
+                }
+
+                spawnShardParticle(serverLevel, blockHit.getLocation(), dir, speed);
+                dir = reflect(dir, blockHit.getDirection());
+                pos = blockHit.getLocation().add(dir.scale(0.02D));
+            }
+        }
+    }
+
+    private LivingEntity findEntityAlong(ServerLevel serverLevel, Vec3 start, Vec3 direction, double distance) {
+        if (distance <= 0.0D) {
+            return null;
+        }
+        Vec3 end = start.add(direction.scale(distance));
+        AABB area = new AABB(start, end).inflate(0.35D);
+        LivingEntity closest = null;
+        double closestDistance = distance + 0.01D;
+
+        for (LivingEntity living : serverLevel.getEntitiesOfClass(LivingEntity.class, area)) {
+            if (!living.isAlive()) {
+                continue;
+            }
+            Optional<Vec3> hit = living.getBoundingBox().inflate(0.08D).clip(start, end);
+            if (hit.isEmpty()) {
+                continue;
+            }
+            double hitDistance = start.distanceTo(hit.get());
+            if (hitDistance < closestDistance) {
+                closestDistance = hitDistance;
+                closest = living;
+            }
+        }
+        return closest;
+    }
+
+    private void damageWithShrapnel(ServerLevel serverLevel, LivingEntity living, Vec3 direction) {
+        float maximum = Config.SHRAPNEL_MAX_DAMAGE.get().floatValue();
+        float already = shrapnelDamage.getOrDefault(living.getUUID(), 0.0F);
+        if (already >= maximum) {
+            return;
+        }
+        float damage = Math.min(Config.SHRAPNEL_DAMAGE.get().floatValue(), maximum - already);
+        if (damage <= 0.0F) {
+            return;
+        }
+        if (hurt(living, serverLevel.damageSources().magic(), damage)) {
+            shrapnelDamage.put(living.getUUID(), already + damage);
+            living.addEffect(new MobEffectInstance(ModEffects.BLEEDING, Config.BLEED_DURATION.get(), 0));
+            living.push(direction.x * 0.25D, 0.08D, direction.z * 0.25D);
+        }
+    }
+
+    private void spawnShardParticle(ServerLevel serverLevel, Vec3 pos, Vec3 direction, double speed) {
+        sendParticle(serverLevel, new DebrisMatterParticleData(false, true,
+                Blocks.BLACK_CONCRETE.defaultBlockState()), pos, direction.scale(speed * 0.35D));
+    }
+
+    private static Vec3 reflect(Vec3 direction, Direction face) {
+        Vec3 normal = Vec3.atLowerCornerOf(face.getNormal());
+        return direction.subtract(normal.scale(2.0D * direction.dot(normal))).normalize();
+    }
+
+    private static boolean hurt(LivingEntity living, DamageSource source, float amount) {
+        if (amount <= 0.0F) {
+            return false;
+        }
+        living.invulnerableTime = 0;
+        return living.hurt(source, amount);
     }
 
     private void sendShake(ServerLevel serverLevel, Vec3 pos) {
@@ -561,7 +777,23 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
 
     @Override
     protected boolean onHitEntity(Entity entity, ProjectileContext context) {
-        return false;
+        if (level().isClientSide || !(entity instanceof LivingEntity living)
+                || !(level() instanceof ServerLevel serverLevel)) {
+            return true;
+        }
+        if (Config.DAMAGE_ENABLED.get()) {
+            Vec3 direction = getDeltaMovement();
+            beamDir = direction.lengthSqr() > 1.0E-6D ? direction.normalize() : new Vec3(0.0D, -1.0D, 0.0D);
+            beamStart = living.position();
+            hurt(living, serverLevel.damageSources().magic(),
+                    Config.DIRECT_HIT_DAMAGE.get().floatValue());
+            living.addEffect(new MobEffectInstance(ModEffects.BLEEDING, Config.BLEED_DURATION.get(), 0));
+            damageShockwave(serverLevel, living.position(), Config.SHOCKWAVE_RADIUS.get(),
+                    Config.SHOCKWAVE_ENTRY_DAMAGE.get().floatValue());
+            spawnBlackShrapnel(serverLevel, living.position(), beamDir, 24, 0.9D);
+            spawnImpactEffect(living.position(), null, Direction.UP);
+        }
+        return true;
     }
 
     @Override

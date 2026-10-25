@@ -14,6 +14,11 @@ public final class ModPayloads {
                 JetBeamPayload.STREAM_CODEC,
                 JetBeamPayload::handle
         );
+        event.registrar("1").playToClient(
+                EoDeafnessPayload.TYPE,
+                EoDeafnessPayload.STREAM_CODEC,
+                EoDeafnessPayload::handle
+        );
     }
 
     private ModPayloads() {
