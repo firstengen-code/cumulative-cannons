@@ -45,7 +45,7 @@ public final class Config {
                 .comment("Hard limit of blocks the jet can travel through.")
                 .defineInRange("max_blocks", 25, 1, 64);
         JET_LAYERS_PER_TICK = builder
-                .comment("How many 1/16 layers are carved per tick. Lower values reduce server load.")
+                .comment("How many 1/16 layers are carved per tick; 16 layers = one block. Lower values reduce server load.")
                 .defineInRange("layers_per_tick", 128, 1, 512);
         JET_CARVE_ENABLED = builder
                 .comment("Set to false to disable the jet tunnel entirely.")

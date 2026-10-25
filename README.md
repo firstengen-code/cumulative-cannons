@@ -2,7 +2,7 @@
 
 A Create Big Cannons addon for Minecraft 1.21.1 (NeoForge) that adds a cumulative jet shell.
 
-On impact the shell does not make a normal explosion. It carves a narrow 2x2-pixel tunnel through blocks, damages entities in the jet path, and throws black fragments with bleeding. The tunnel length depends on the material: dirt and wood are cheap, stone is more expensive, obsidian and netherite stop the jet quickly. The penetration budget, maximum length, damage and effect settings are configurable.
+On impact the shell does not make a normal explosion. It carves a narrow 2x2-pixel tunnel through blocks, follows the actual shot direction (including diagonal), damages entities in the jet path, and throws light-gray fragments with bleeding. The tunnel length depends on the material: dirt and wood are cheap, stone is more expensive, obsidian and netherite stop the jet quickly. The penetration budget, maximum length, damage and effect settings are configurable.
 
 ## Requirements
 
@@ -24,10 +24,11 @@ The exact dependency jars used for development are vendored in `libs/`.
 ## Features
 
 - 2x2-pixel tunnel (1 pixel = 1/16 block), up to 25 blocks by default.
+- Ray-carved tunnel that follows diagonal shots, not just one world axis.
 - Material-based penetration budget; values are data-driven.
 - Armor-piercing jet damage with distance falloff.
 - Entry and exit shockwaves.
-- Black shrapnel with up to 2 ricochets, capped fragment damage and bleeding.
+- Light-gray shrapnel with up to 2 ricochets, capped fragment damage and bleeding.
 - CBC HE-style particles, a 15-block exit beam and a smoke trail that fades over several seconds.
 - Effects are visible to players within 200 blocks.
 - Optional Explosion Overhaul integration: concussion within 5 blocks, deafness up to 10 blocks.
@@ -40,7 +41,7 @@ Use Java 21:
 JAVA_HOME=/path/to/jdk-21 ./gradlew build
 ```
 
-The jar is written to `build/libs/cumulative_cannons-0.2.0.jar`.
+The jar is written to `build/libs/cumulative_cannons-0.2.1.jar`.
 
 ## Run a test client
 
@@ -57,7 +58,7 @@ The server config is `config/cumulative_cannons-server.toml`.
 Jet:
 
 - `budget` and `max_blocks` - penetration budget and hard length limit
-- `layers_per_tick` - carving speed
+- `layers_per_tick` - carving speed (16 layers = one block)
 - `carve_enabled`, `respect_grief`, `respect_protection` - safety toggles
 - `default_cost` - fallback material cost
 
@@ -80,4 +81,4 @@ Material costs can be changed in `data/cumulative_cannons/cumulative_jet_materia
 
 ## Status
 
-Version 0.2.0. The projectile, carving, penetration, damage, shrapnel, bleeding, CBC effects and optional Explosion Overhaul integration are implemented. Crafting, final model/texture and multiplayer polish are still to do.
+Version 0.2.1. The projectile, diagonal ray carving, penetration, damage, shrapnel, bleeding, CBC effects and optional Explosion Overhaul integration are implemented. Crafting, final model/texture and multiplayer polish are still to do.

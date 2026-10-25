@@ -54,7 +54,10 @@ import team.creative.littletiles.common.block.entity.BETiles;
 import team.creative.littletiles.common.grid.LittleGrid;
 import team.creative.littletiles.common.math.box.LittleBox;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,23 +66,15 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
     private static final double EFFECT_RADIUS = 200.0D;
 
     private boolean carving;
-    private BlockPos startPos;
-    private Direction.Axis axis;
-    private int sign;
-    private double fractionA;
-    private double fractionB;
     private int blockOffset;
-    private int layer;
-    private double budget;
-    private double currentCost = -1;
     private int maxBlocks;
+    private List<TunnelBlock> tunnel = List.of();
     private LittleActionSource source;
     private Vec3 beamStart;
     private Vec3 beamDir;
     private Vec3 entryPos;
     private Vec3 exitPos;
     private BlockState lastSolidState;
-    private boolean exitSpawned;
     private int particlesThisTick;
     private final Map<UUID, Float> shrapnelDamage = new HashMap<>();
 
@@ -121,54 +116,27 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         beamDir = direction.normalize();
         exitPos = null;
         lastSolidState = null;
-        exitSpawned = false;
         particlesThisTick = 0;
         shrapnelDamage.clear();
 
-        if (Math.abs(direction.x) >= Math.abs(direction.y) && Math.abs(direction.x) >= Math.abs(direction.z)) {
-            axis = Direction.Axis.X;
-            sign = direction.x >= 0 ? 1 : -1;
-            fractionA = hit.getLocation().y - Math.floor(hit.getLocation().y);
-            fractionB = hit.getLocation().z - Math.floor(hit.getLocation().z);
-        } else if (Math.abs(direction.y) >= Math.abs(direction.z)) {
-            axis = Direction.Axis.Y;
-            sign = direction.y >= 0 ? 1 : -1;
-            fractionA = hit.getLocation().x - Math.floor(hit.getLocation().x);
-            fractionB = hit.getLocation().z - Math.floor(hit.getLocation().z);
-        } else {
-            axis = Direction.Axis.Z;
-            sign = direction.z >= 0 ? 1 : -1;
-            fractionA = hit.getLocation().x - Math.floor(hit.getLocation().x);
-            fractionB = hit.getLocation().y - Math.floor(hit.getLocation().y);
-        }
-
-        startPos = hit.getBlockPos();
         blockOffset = 0;
-        layer = 0;
-        budget = Config.JET_BUDGET.get();
         maxBlocks = Config.JET_MAX_BLOCKS.get();
-        currentCost = -1;
         source = new JetActionSource(level());
-
-        PredictedExit predicted = predictExit();
-        if (predicted.exit()) {
-            lastSolidState = predicted.lastSolid;
-        } else {
-            lastSolidState = state;
-        }
+        TunnelPlan plan = planTunnel();
+        tunnel = plan.blocks();
+        lastSolidState = plan.lastSolid() != null ? plan.lastSolid() : state;
         Vec3 back = Vec3.atLowerCornerOf(hit.getDirection().getNormal());
         entryPos = hit.getLocation().add(back.scale(0.35D));
         if (level() instanceof ServerLevel serverLevel) {
-            damageJetPath(serverLevel, beamStart, beamDir, predictLength());
+            damageJetPath(serverLevel, beamStart, beamDir, tunnel.size());
             damageShockwave(serverLevel, hit.getLocation(), Config.SHOCKWAVE_RADIUS.get(),
                     Config.SHOCKWAVE_ENTRY_DAMAGE.get().floatValue());
             damageRicochetShrapnel(serverLevel, hit.getLocation(), back, 24, 0.9D);
-            spawnBlackShrapnel(serverLevel, hit.getLocation(), back, 24, 0.9D);
+            spawnBlackShrapnel(serverLevel, hit.getLocation(), back, 10, 2.5D);
         }
         spawnImpactEffect(hit.getLocation(), state, hit.getDirection());
-        if (predicted.exit() && level() instanceof ServerLevel serverLevel) {
-            spawnExitEffect(serverLevel, Vec3.atCenterOf(predicted.exitPos), predicted.lastSolid);
-            exitSpawned = true;
+        if (plan.exitPos() != null && plan.lastSolid() != null && level() instanceof ServerLevel serverLevel) {
+            spawnExitEffect(serverLevel, Vec3.atCenterOf(plan.exitPos()), plan.lastSolid());
         }
 
         carving = true;
@@ -176,49 +144,74 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         return new ImpactResult(ImpactResult.KinematicOutcome.STOP, false);
     }
 
-    private PredictedExit predictExit() {
+    private TunnelPlan planTunnel() {
+        List<TunnelBlock> blocks = new ArrayList<>();
+        Map<BlockPos, List<BoxSpec>> boxesByPos = new LinkedHashMap<>();
         BlockState lastSolid = null;
+        BlockPos exitPos = null;
+        Direction.Axis axis = dominantAxis(beamDir);
         double remaining = Config.JET_BUDGET.get();
-        for (int i = 0; i < maxBlocks; i++) {
-            BlockPos pos = startPos.relative(axisDirection(), i);
-            BlockState state = level().getBlockState(pos);
-            if (state.isAir() || !state.getFluidState().isEmpty()) {
-                if (lastSolid == null) {
-                    return PredictedExit.NONE;
+        double maxDistance = maxBlocks * 2.0D + 1.0D;
+        double step = 1.0D / 16.0D;
+        Vec3 start = beamStart.add(beamDir.scale(0.001D));
+
+        for (double distance = 0.0D; distance <= maxDistance; distance += step) {
+            Vec3 point = start.add(beamDir.scale(distance));
+            BlockPos pos = BlockPos.containing(point);
+            List<BoxSpec> boxes = boxesByPos.get(pos);
+            if (boxes == null) {
+                BlockState state = level().getBlockState(pos);
+                if (state.isAir() || !state.getFluidState().isEmpty()) {
+                    exitPos = pos;
+                    break;
                 }
-                return new PredictedExit(pos, lastSolid);
+                if (Config.JET_RESPECT_PROTECTION.get() && state.getDestroySpeed(level(), pos) < 0) {
+                    break;
+                }
+                if (blocks.size() >= maxBlocks) {
+                    break;
+                }
+                double cost = JetMaterialCosts.getCost(state);
+                if (remaining < cost) {
+                    break;
+                }
+                remaining -= cost;
+                boxes = new ArrayList<>();
+                boxesByPos.put(pos, boxes);
+                blocks.add(new TunnelBlock(pos, boxes));
+                lastSolid = state;
             }
-            if (Config.JET_RESPECT_PROTECTION.get() && state.getDestroySpeed(level(), pos) < 0) {
-                return PredictedExit.NONE;
+            BoxSpec box = pixelBox(point, axis);
+            if (!boxes.contains(box)) {
+                boxes.add(box);
             }
-            double cost = JetMaterialCosts.getCost(state);
-            if (remaining < cost) {
-                return PredictedExit.NONE;
-            }
-            remaining -= cost;
-            lastSolid = state;
         }
-        return PredictedExit.NONE;
+        return new TunnelPlan(blocks, exitPos, lastSolid);
     }
 
-    private int predictLength() {
-        double remaining = Config.JET_BUDGET.get();
-        for (int i = 0; i < maxBlocks; i++) {
-            BlockPos pos = startPos.relative(axisDirection(), i);
-            BlockState state = level().getBlockState(pos);
-            if (state.isAir() || !state.getFluidState().isEmpty()) {
-                return i;
-            }
-            if (Config.JET_RESPECT_PROTECTION.get() && state.getDestroySpeed(level(), pos) < 0) {
-                return i;
-            }
-            double cost = JetMaterialCosts.getCost(state);
-            if (remaining < cost) {
-                return i;
-            }
-            remaining -= cost;
+    private static Direction.Axis dominantAxis(Vec3 direction) {
+        if (Math.abs(direction.x) >= Math.abs(direction.y) && Math.abs(direction.x) >= Math.abs(direction.z)) {
+            return Direction.Axis.X;
         }
-        return maxBlocks;
+        if (Math.abs(direction.y) >= Math.abs(direction.z)) {
+            return Direction.Axis.Y;
+        }
+        return Direction.Axis.Z;
+    }
+
+    private static BoxSpec pixelBox(Vec3 point, Direction.Axis axis) {
+        Vec3 local = point.subtract(Vec3.atLowerCornerOf(BlockPos.containing(point))).scale(16.0D);
+        int x = Mth.clamp(Mth.floor(local.x), 0, 15);
+        int y = Mth.clamp(Mth.floor(local.y), 0, 15);
+        int z = Mth.clamp(Mth.floor(local.z), 0, 15);
+        int centerX = Mth.clamp(Mth.floor(local.x + 0.5D), 1, 15) - 1;
+        int centerY = Mth.clamp(Mth.floor(local.y + 0.5D), 1, 15) - 1;
+        int centerZ = Mth.clamp(Mth.floor(local.z + 0.5D), 1, 15) - 1;
+        return switch (axis) {
+            case X -> new BoxSpec(x, centerY, centerZ, x + 1, centerY + 2, centerZ + 2);
+            case Y -> new BoxSpec(centerX, y, centerZ, centerX + 2, y + 1, centerZ + 2);
+            case Z -> new BoxSpec(centerX, centerY, z, centerX + 2, centerY + 2, z + 1);
+        };
     }
 
     private void spawnImpactEffect(Vec3 pos, BlockState state, Direction face) {
@@ -276,7 +269,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             damageShockwave(serverLevel, pos, Config.SHOCKWAVE_RADIUS.get(),
                     Config.SHOCKWAVE_EXIT_DAMAGE.get().floatValue());
             damageRicochetShrapnel(serverLevel, pos, beamDir, 48, 1.5D);
-            spawnBlackShrapnel(serverLevel, pos, beamDir, 48, 1.5D);
+            spawnBlackShrapnel(serverLevel, pos, beamDir, 20, 4.0D);
         }
         if (!Config.JET_EFFECTS_ENABLED.get()) {
             return;
@@ -352,7 +345,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         if (!Config.JET_EFFECTS_ENABLED.get() || count <= 0) {
             return;
         }
-        BlockState shard = Blocks.BLACK_CONCRETE.defaultBlockState();
+        BlockState shard = Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
         for (int i = 0; i < scaledCount(count); i++) {
             Vec3 velocity = coneVelocity(direction, Config.SHRAPNEL_ANGLE.get(),
                     speed * (0.6D + random.nextDouble() * 0.8D));
@@ -498,7 +491,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
 
     private void spawnShardParticle(ServerLevel serverLevel, Vec3 pos, Vec3 direction, double speed) {
         sendParticle(serverLevel, new DebrisMatterParticleData(false, true,
-                Blocks.BLACK_CONCRETE.defaultBlockState()), pos, direction.scale(speed * 0.35D));
+                Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState()), pos, direction.scale(speed * 0.8D));
     }
 
     private static Vec3 reflect(Vec3 direction, Direction face) {
@@ -632,47 +625,21 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
 
     private void carveStep() {
         particlesThisTick = 0;
+        int blocksPerTick = Math.max(1, Config.JET_LAYERS_PER_TICK.get() / 16);
         int processed = 0;
-        while (processed < Config.JET_LAYERS_PER_TICK.get() && carving) {
+        while (processed < blocksPerTick && carving) {
             processed++;
-            if (blockOffset >= maxBlocks) {
+            if (blockOffset >= tunnel.size()) {
                 finishCarving();
                 return;
             }
 
-            BlockPos pos = startPos.relative(axisDirection(), blockOffset);
-            BlockState state = level().getBlockState(pos);
-
-            if (state.isAir() || !state.getFluidState().isEmpty()) {
-                if (!exitSpawned && lastSolidState != null && level() instanceof ServerLevel serverLevel) {
-                    spawnExitEffect(serverLevel, Vec3.atCenterOf(pos), lastSolidState);
-                    exitSpawned = true;
-                }
-                nextBlock();
-                continue;
-            }
-
-            lastSolidState = state;
-
-            if (currentCost < 0) {
-                if (Config.JET_RESPECT_PROTECTION.get() && state.getDestroySpeed(level(), pos) < 0) {
-                    finishCarving();
-                    return;
-                }
-                currentCost = JetMaterialCosts.getCost(state);
-                if (budget < currentCost) {
-                    finishCarving();
-                    return;
-                }
-                budget -= currentCost;
-            }
-
-            carveLayer(pos, state);
-
-            layer++;
-            if (layer >= 16) {
-                nextBlock();
-            }
+            TunnelBlock block = tunnel.get(blockOffset);
+            carveBlock(block.pos(), block.boxes());
+            blockOffset++;
+        }
+        if (blockOffset >= tunnel.size()) {
+            finishCarving();
         }
     }
 
@@ -716,7 +683,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         }
     }
 
-    private void carveLayer(BlockPos pos, BlockState state) {
+    private void carveBlock(BlockPos pos, List<BoxSpec> specs) {
         BETiles be;
         try {
             be = LittleAction.loadBE(source, level(), pos, null, true, 0);
@@ -733,46 +700,27 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             }
 
             LittleGrid grid = be.getGrid();
-            int pixel = Math.max(1, grid.count / 16);
-            int layerCount = Math.max(1, grid.count / pixel);
-            if (layer >= layerCount) {
-                return;
+            double scale = grid.count / 16.0D;
+            List<LittleBox> boxes = new ArrayList<>(specs.size());
+            for (BoxSpec spec : specs) {
+                int x0 = Mth.clamp((int) Math.round(spec.x0() * scale), 0, grid.count - 1);
+                int y0 = Mth.clamp((int) Math.round(spec.y0() * scale), 0, grid.count - 1);
+                int z0 = Mth.clamp((int) Math.round(spec.z0() * scale), 0, grid.count - 1);
+                int x1 = Mth.clamp((int) Math.round(spec.x1() * scale), x0 + 1, grid.count);
+                int y1 = Mth.clamp((int) Math.round(spec.y1() * scale), y0 + 1, grid.count);
+                int z1 = Mth.clamp((int) Math.round(spec.z1() * scale), z0 + 1, grid.count);
+                boxes.add(new LittleBox(x0, y0, z0, x1, y1, z1));
             }
 
-            int localLayer = sign > 0 ? layer : layerCount - 1 - layer;
-            int crossA = Mth.clamp((int) Math.floor(fractionA * grid.count - pixel / 2.0D), 0, grid.count - 2 * pixel);
-            int crossB = Mth.clamp((int) Math.floor(fractionB * grid.count - pixel / 2.0D), 0, grid.count - 2 * pixel);
-            int minLayer = localLayer * pixel;
-            int maxLayer = minLayer + pixel;
-
-            LittleBox box = switch (axis) {
-                case X -> new LittleBox(minLayer, crossA, crossB, maxLayer, crossA + 2 * pixel, crossB + 2 * pixel);
-                case Y -> new LittleBox(crossA, minLayer, crossB, crossA + 2 * pixel, maxLayer, crossB + 2 * pixel);
-                case Z -> new LittleBox(crossA, crossB, minLayer, crossA + 2 * pixel, crossB + 2 * pixel, maxLayer);
-            };
-
-            LittleActionDestroyBoxes.removeBox(be, grid, box, true, null);
+            if (!boxes.isEmpty()) {
+                LittleActionDestroyBoxes.removeBoxes(be, grid, boxes);
+            }
             if (be.isEmpty()) {
                 be.convertBlockToVanilla();
             }
         } catch (Exception e) {
             // Keep the tunnel going even if one block cannot be converted or carved.
         }
-    }
-
-    private Direction axisDirection() {
-        Direction positive = switch (axis) {
-            case X -> Direction.EAST;
-            case Y -> Direction.UP;
-            case Z -> Direction.SOUTH;
-        };
-        return sign > 0 ? positive : positive.getOpposite();
-    }
-
-    private void nextBlock() {
-        blockOffset++;
-        layer = 0;
-        currentCost = -1;
     }
 
     @Override
@@ -790,7 +738,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             living.addEffect(new MobEffectInstance(ModEffects.BLEEDING, Config.BLEED_DURATION.get(), 0));
             damageShockwave(serverLevel, living.position(), Config.SHOCKWAVE_RADIUS.get(),
                     Config.SHOCKWAVE_ENTRY_DAMAGE.get().floatValue());
-            spawnBlackShrapnel(serverLevel, living.position(), beamDir, 24, 0.9D);
+            spawnBlackShrapnel(serverLevel, living.position(), beamDir, 10, 2.5D);
             spawnImpactEffect(living.position(), null, Direction.UP);
         }
         return true;
@@ -821,10 +769,9 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         return properties().ballistics();
     }
 
-    private record PredictedExit(BlockPos exitPos, BlockState lastSolid) {
-        private static final PredictedExit NONE = new PredictedExit(null, null);
-        private boolean exit() {
-            return exitPos != null;
-        }
-    }
+    private record BoxSpec(int x0, int y0, int z0, int x1, int y1, int z1) {}
+
+    private record TunnelBlock(BlockPos pos, List<BoxSpec> boxes) {}
+
+    private record TunnelPlan(List<TunnelBlock> blocks, BlockPos exitPos, BlockState lastSolid) {}
 }
