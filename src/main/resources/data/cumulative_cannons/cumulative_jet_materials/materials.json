@@ -1,0 +1,23 @@
+{
+  "blocks": {
+    "#minecraft:logs": 1.0,
+    "#minecraft:planks": 1.0,
+    "#minecraft:wooden_slabs": 1.0,
+    "#minecraft:leaves": 0.5,
+    "#minecraft:dirt": 0.5,
+    "#minecraft:sand": 0.75,
+    "#minecraft:base_stone_overworld": 2.0,
+    "#minecraft:base_stone_nether": 2.0,
+    "#minecraft:stone_bricks": 2.0,
+    "minecraft:iron_block": 6.0,
+    "minecraft:copper_block": 4.0,
+    "minecraft:netherite_block": 20.0,
+    "createbigcannons:cast_iron_block": 6.0,
+    "createbigcannons:steel_block": 6.0,
+    "createbigcannons:nethersteel_block": 8.0,
+    "minecraft:obsidian": 16.0,
+    "minecraft:crying_obsidian": 16.0,
+    "minecraft:ancient_debris": 16.0,
+    "minecraft:deepslate": 3.0
+  }
+}
