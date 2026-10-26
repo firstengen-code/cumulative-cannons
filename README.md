@@ -41,7 +41,7 @@ Use Java 21:
 JAVA_HOME=/path/to/jdk-21 ./gradlew build
 ```
 
-The jar is written to `build/libs/cumulative_cannons-0.2.1.jar`.
+The jar is written to `build/libs/cumulative_cannons-0.3.0.jar`.
 
 ## Run a test client
 
@@ -53,7 +53,7 @@ The shell is currently available in the Combat creative tab. Crafting is not imp
 
 ## Configuration
 
-The server config is `config/cumulative_cannons-server.toml`.
+The config is `config/cumulative_cannons-server.toml`. It can also be opened in game from **Mods > Cumulative Cannons > Settings**; numeric values use sliders. The button **Block penetration** opens a searchable per-block cost editor, saved to `config/cumulative_cannons-materials.json`.
 
 Jet:
 
@@ -61,10 +61,13 @@ Jet:
 - `layers_per_tick` - carving speed (16 layers = one block)
 - `carve_enabled`, `respect_grief`, `respect_protection` - safety toggles
 - `default_cost` - fallback material cost
+- `penetration_multiplier` - global multiplier for every block cost (1.0 = normal)
 
 Effects:
 
 - `effects_enabled`, `effect_multiplier`, `effect_limit`
+- `smoke_internal_black`, `smoke_internal_white`, `smoke_external_black`, `smoke_external_white` - white/black smoke amounts (0 = off, 100 = default, 300 = triple)
+- `smoke_explosion_cloud` - CBC explosion cloud amount (0 = off, 100 = default, 300 = triple)
 - `camera_shake`, `camera_shake_strength`
 - `impact_light`
 
@@ -77,8 +80,8 @@ Combat:
 - `shrapnel_bounces`, `shrapnel_range`
 - `bleeding_duration`, `bleeding_interval`, `bleeding_damage`
 
-Material costs can be changed in `data/cumulative_cannons/cumulative_jet_materials/materials.json`.
+Material costs can be changed in `data/cumulative_cannons/cumulative_jet_materials/materials.json` for mod defaults/tags, or per block in `config/cumulative_cannons-materials.json` (also editable from the in-game **Block penetration** screen).
 
 ## Status
 
-Version 0.2.1. The projectile, diagonal ray carving, penetration, damage, shrapnel, bleeding, CBC effects and optional Explosion Overhaul integration are implemented. Crafting, final model/texture and multiplayer polish are still to do.
+Version 0.3.0. The projectile, diagonal ray carving, per-block penetration settings, in-game config screen, smoke test blocks, damage, shrapnel, bleeding, CBC effects and optional Explosion Overhaul integration are implemented. Crafting, final model/texture and multiplayer polish are still to do.

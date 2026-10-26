@@ -1,6 +1,7 @@
 package com.cumulativecannons;
 
 import com.cumulativecannons.compat.ExplosionOverhaulCompat;
+import com.cumulativecannons.jet.JetMaterialCosts;
 import com.cumulativecannons.jet.JetMaterialReloadListener;
 import com.cumulativecannons.network.ModPayloads;
 import com.cumulativecannons.registry.ModBlockEntities;
@@ -41,13 +42,14 @@ public class CumulativeCannons {
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(this::addCreative);
         modEventBus.addListener(ModPayloads::register);
-        modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
+        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC, "cumulative_cannons-server.toml");
         NeoForge.EVENT_BUS.addListener(this::addReloadListeners);
         NeoForge.EVENT_BUS.addListener(ExplosionOverhaulCompat::onServerStarted);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(() -> {
+            JetMaterialCosts.loadBlockOverrides();
             MunitionPropertiesHandler.registerProjectileHandler(
                     ModEntities.CUMULATIVE_SHELL.get(),
                     CBCMunitionPropertiesHandlers.INERT_BIG_CANNON_PROJECTILE
@@ -62,6 +64,11 @@ public class CumulativeCannons {
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.COMBAT) {
             event.accept(new ItemStack(ModItems.CUMULATIVE_SHELL.get()));
+        }
+        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
+            event.accept(ModItems.SMOKE_TEST_1.get());
+            event.accept(ModItems.SMOKE_TEST_2.get());
+            event.accept(ModItems.SMOKE_TEST_3.get());
         }
     }
 

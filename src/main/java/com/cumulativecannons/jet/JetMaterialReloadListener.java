@@ -34,5 +34,6 @@ public class JetMaterialReloadListener extends SimpleJsonResourceReloadListener 
             }
         }
         JetMaterialCosts.setCustomCosts(costs);
+        JetMaterialCosts.loadBlockOverrides();
     }
 }

@@ -19,6 +19,11 @@ public final class ModPayloads {
                 EoDeafnessPayload.STREAM_CODEC,
                 EoDeafnessPayload::handle
         );
+        event.registrar("1").playToServer(
+                TunnelBreakPayload.TYPE,
+                TunnelBreakPayload.STREAM_CODEC,
+                TunnelBreakPayload::handle
+        );
     }
 
     private ModPayloads() {

@@ -14,15 +14,15 @@ public class JetSmokeParticle extends TextureSheetParticle {
         super(level, x, y, z);
         this.dark = dark;
         this.setSprite(sprites.get(this.random));
-        this.startSize = dark ? 0.18F + this.random.nextFloat() * 0.12F : 0.1F + this.random.nextFloat() * 0.08F;
+        this.startSize = dark ? 0.12F + this.random.nextFloat() * 0.13F : 0.1F + this.random.nextFloat() * 0.08F;
         this.quadSize = this.startSize;
-        this.lifetime = dark ? 55 + this.random.nextInt(20) : 65 + this.random.nextInt(20);
+        this.lifetime = dark ? 120 + this.random.nextInt(80) : 65 + this.random.nextInt(20);
         this.hasPhysics = false;
         this.friction = 0.96F;
         this.gravity = -0.002F;
         this.yd += 0.004D + this.random.nextDouble() * 0.004D;
         if (dark) {
-            this.setColor(0.12F, 0.12F, 0.13F);
+            this.setColor(0.012F, 0.012F, 0.014F); this.roll = this.random.nextFloat() * ((float)Math.PI * 2.0F); this.oRoll = this.roll;
         } else {
             this.setColor(0.72F, 0.74F, 0.76F);
         }
@@ -35,8 +35,8 @@ public class JetSmokeParticle extends TextureSheetParticle {
             return;
         }
         float progress = this.age / (float) this.lifetime;
-        this.alpha = (1.0F - progress) * (this.dark ? 0.62F : 0.46F);
-        this.quadSize = this.startSize * (1.0F + progress * 2.4F);
+        this.alpha = (1.0F - progress) * (this.dark ? 0.74F : 0.46F);
+        this.quadSize = this.startSize * (1.0F + progress * (this.dark ? 2.5F : 2.4F));
         this.yd += this.dark ? 0.0012D : 0.0007D;
     }
 

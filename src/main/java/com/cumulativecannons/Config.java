@@ -12,9 +12,15 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue JET_RESPECT_GRIEF;
     public static final ModConfigSpec.BooleanValue JET_RESPECT_PROTECTION;
     public static final ModConfigSpec.DoubleValue JET_DEFAULT_COST;
+    public static final ModConfigSpec.DoubleValue JET_PENETRATION_MULTIPLIER;
     public static final ModConfigSpec.BooleanValue JET_EFFECTS_ENABLED;
     public static final ModConfigSpec.DoubleValue JET_EFFECT_MULTIPLIER;
     public static final ModConfigSpec.IntValue JET_EFFECT_LIMIT;
+    public static final ModConfigSpec.IntValue SMOKE_INTERNAL_BLACK;
+    public static final ModConfigSpec.IntValue SMOKE_INTERNAL_WHITE;
+    public static final ModConfigSpec.IntValue SMOKE_EXTERNAL_BLACK;
+    public static final ModConfigSpec.IntValue SMOKE_EXTERNAL_WHITE;
+    public static final ModConfigSpec.IntValue SMOKE_EXPLOSION_CLOUD;
     public static final ModConfigSpec.BooleanValue JET_CAMERA_SHAKE;
     public static final ModConfigSpec.DoubleValue JET_SHAKE_STRENGTH;
     public static final ModConfigSpec.BooleanValue JET_IMPACT_LIGHT;
@@ -59,6 +65,9 @@ public final class Config {
         JET_DEFAULT_COST = builder
                 .comment("Fallback cost per block for blocks not listed in the material JSON.")
                 .defineInRange("default_cost", 2.0, 0.0, 1000.0);
+        JET_PENETRATION_MULTIPLIER = builder
+                .comment("Global multiplier for every block penetration cost. 1.0 = normal, 2.0 = twice as hard, 0.5 = twice as easy.")
+                .defineInRange("penetration_multiplier", 1.0, 0.05, 20.0);
         JET_EFFECTS_ENABLED = builder
                 .comment("Enable the impact flash, jet sparks, smoke and exit debris.")
                 .define("effects_enabled", true);
@@ -68,6 +77,21 @@ public final class Config {
         JET_EFFECT_LIMIT = builder
                 .comment("Absolute cap of effect particles spawned per tick.")
                 .defineInRange("effect_limit", 512, 0, 4096);
+        SMOKE_INTERNAL_BLACK = builder
+                .comment("Black smoke inside the jet/tunnel. 0 = off, 100 = default, 300 = triple.")
+                .defineInRange("smoke_internal_black", 100, 0, 300);
+        SMOKE_INTERNAL_WHITE = builder
+                .comment("White smoke inside the jet/tunnel. 0 = off, 100 = default, 300 = triple.")
+                .defineInRange("smoke_internal_white", 100, 0, 300);
+        SMOKE_EXTERNAL_BLACK = builder
+                .comment("Black smoke at the entry/exit clouds. 0 = off, 100 = default, 300 = triple.")
+                .defineInRange("smoke_external_black", 100, 0, 300);
+        SMOKE_EXTERNAL_WHITE = builder
+                .comment("White smoke at the entry/exit clouds. 0 = off, 100 = default, 300 = triple.")
+                .defineInRange("smoke_external_white", 100, 0, 300);
+        SMOKE_EXPLOSION_CLOUD = builder
+                .comment("CBC explosion cloud at impact and exit. 0 = off, 100 = default, 300 = triple.")
+                .defineInRange("smoke_explosion_cloud", 100, 0, 300);
         JET_CAMERA_SHAKE = builder
                 .comment("Send a short camera shake to nearby players on impact.")
                 .define("camera_shake", true);

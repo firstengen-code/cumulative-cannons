@@ -8,6 +8,7 @@ import com.cumulativecannons.network.ImpactShakePayload;
 import com.cumulativecannons.network.JetBeamPayload;
 import com.cumulativecannons.registry.ModBlocks;
 import com.cumulativecannons.registry.ModEffects;
+import com.cumulativecannons.tunnel.TunnelTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleOptions;
@@ -36,7 +37,6 @@ import rbasamoyai.createbigcannons.config.CBCCfgMunitions;
 import rbasamoyai.createbigcannons.effects.particles.explosions.ShellExplosionCloudParticleData;
 import rbasamoyai.createbigcannons.effects.particles.impacts.DebrisMatterParticleData;
 import rbasamoyai.createbigcannons.effects.particles.impacts.SparkBurstParticleData;
-import rbasamoyai.createbigcannons.effects.particles.smoke.CannonSmokeParticleData;
 import rbasamoyai.createbigcannons.effects.particles.smoke.ShellExplosionSmokeParticleData;
 import rbasamoyai.createbigcannons.index.CBCMunitionPropertiesHandlers;
 import rbasamoyai.createbigcannons.index.CBCSoundEvents;
@@ -223,13 +223,16 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
                 && !level().getBlockState(blockPos.below()).isAir();
 
         // CBC HE shell visuals at half power (HE shell uses block power 8).
-        sendParticle(serverLevel, new ShellExplosionCloudParticleData(4.0F, plume), pos, Vec3.ZERO);
-        sendParticle(serverLevel, new ShellExplosionCloudParticleData(3.0F, false), offset(pos, 0.35D), Vec3.ZERO);
+        int cloudSets = smokeCount(1, Config.SMOKE_EXPLOSION_CLOUD.get());
+        for (int i = 0; i < cloudSets; i++) {
+            sendParticle(serverLevel, new ShellExplosionCloudParticleData(4.0F, plume), pos, Vec3.ZERO);
+            sendParticle(serverLevel, new ShellExplosionCloudParticleData(3.0F, false), offset(pos, 0.35D), Vec3.ZERO);
+        }
 
         Vec3 back = Vec3.atLowerCornerOf(face.getNormal()).normalize();
         Vec3 side = perpendicular(beamDir);
 
-        for (int i = 0; i < scaledCount(90); i++) {
+        for (int i = 0; i < scaledCount(smokeCount(160, Config.SMOKE_EXTERNAL_WHITE.get())); i++) {
             Vec3 velocity = back.scale(0.01D + random.nextDouble() * 0.07D)
                     .add(side.scale((random.nextDouble() - 0.5D) * 0.09D))
                     .add(offset(Vec3.ZERO, 0.025D))
@@ -237,6 +240,14 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             int lifetime = 100 + random.nextInt(100);
             float scale = 4.0F + random.nextFloat() * 4.0F;
             sendParticle(serverLevel, new ShellExplosionSmokeParticleData(lifetime, scale), offset(pos, 0.35D), velocity);
+        }
+
+        for (int i = 0; i < scaledCount(smokeCount(40, Config.SMOKE_EXTERNAL_BLACK.get())); i++) {
+            Vec3 velocity = back.scale(0.01D + random.nextDouble() * 0.05D)
+                    .add(side.scale((random.nextDouble() - 0.5D) * 0.06D))
+                    .add(0.0D, 0.015D + random.nextDouble() * 0.03D, 0.0D);
+            sendParticle(serverLevel, new ShellExplosionSmokeParticleData(120 + random.nextInt(80), 3.0F),
+                    offset(pos, 0.3D), velocity);
         }
 
         for (int i = 0; i < scaledCount(3); i++) {
@@ -274,7 +285,9 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         if (!Config.JET_EFFECTS_ENABLED.get()) {
             return;
         }
-        sendParticle(serverLevel, new ShellExplosionCloudParticleData(2.0F, false), pos, Vec3.ZERO);
+        for (int i = 0; i < smokeCount(1, Config.SMOKE_EXPLOSION_CLOUD.get()); i++) {
+            sendParticle(serverLevel, new ShellExplosionCloudParticleData(2.0F, false), pos, Vec3.ZERO);
+        }
 
         for (int i = 0; i < scaledCount(4); i++) {
             Vec3 velocity = coneVelocity(beamDir, 35.0D, 1.2D + random.nextDouble() * 0.9D);
@@ -287,7 +300,7 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
                     offset(pos, 0.06D), velocity);
         }
 
-        for (int i = 0; i < scaledCount(100); i++) {
+        for (int i = 0; i < scaledCount(smokeCount(180, Config.SMOKE_INTERNAL_WHITE.get())); i++) {
             double distance = random.nextDouble() * 6.0D;
             Vec3 point = pos.add(beamDir.scale(distance)).add(offset(Vec3.ZERO, 0.12D));
             Vec3 velocity = beamDir.scale(0.005D + random.nextDouble() * 0.02D)
@@ -297,12 +310,12 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             sendParticle(serverLevel, new ShellExplosionSmokeParticleData(80 + random.nextInt(80), scale), point, velocity);
         }
 
-        for (int i = 0; i < scaledCount(40); i++) {
+        for (int i = 0; i < scaledCount(smokeCount(100, Config.SMOKE_INTERNAL_BLACK.get())); i++) {
             double distance = random.nextDouble() * 4.0D;
             Vec3 point = pos.add(beamDir.scale(distance)).add(offset(Vec3.ZERO, 0.25D));
             Vec3 velocity = offset(Vec3.ZERO, 0.02D).add(0.0D, 0.02D, 0.0D);
-            sendParticle(serverLevel, new CannonSmokeParticleData(2.0F, 1.5F + random.nextFloat(),
-                    80 + random.nextInt(60), 0.9F), point, velocity);
+            sendParticle(serverLevel, new ShellExplosionSmokeParticleData(120 + random.nextInt(80), 3.0F),
+                    point, velocity);
         }
 
         if (state != null) {
@@ -325,7 +338,8 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         int steps = Math.max(1, (int) Math.round(length / 0.35D));
         for (int i = 0; i <= steps; i++) {
             Vec3 point = start.add(direction.scale(length * i / steps));
-            for (int j = 0; j < 3; j++) {
+            int white = smokeCount(6, Config.SMOKE_INTERNAL_WHITE.get());
+            for (int j = 0; j < white; j++) {
                 Vec3 velocity = direction.scale(0.005D + random.nextDouble() * 0.015D)
                         .add(offset(Vec3.ZERO, 0.01D))
                         .add(0.0D, 0.005D + random.nextDouble() * 0.012D, 0.0D);
@@ -334,9 +348,12 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
                         point.add(offset(Vec3.ZERO, 0.12D)), velocity);
             }
             if (i % 4 == 0) {
-                Vec3 velocity = offset(Vec3.ZERO, 0.01D).add(0.0D, 0.005D, 0.0D);
-                sendParticle(serverLevel, new CannonSmokeParticleData(2.0F, 1.5F + random.nextFloat(),
-                        120 + random.nextInt(80), 0.9F), point.add(offset(Vec3.ZERO, 0.1D)), velocity);
+                int black = smokeCount(2, Config.SMOKE_INTERNAL_BLACK.get());
+                for (int j = 0; j < black; j++) {
+                    Vec3 velocity = offset(Vec3.ZERO, 0.01D).add(0.0D, 0.005D, 0.0D);
+                    sendParticle(serverLevel, new ShellExplosionSmokeParticleData(120 + random.nextInt(80), 3.0F),
+                            point.add(offset(Vec3.ZERO, 0.1D)), velocity);
+                }
             }
         }
     }
@@ -584,6 +601,10 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         return Math.max(0, (int) Math.round(base * Config.JET_EFFECT_MULTIPLIER.get()));
     }
 
+    private int smokeCount(int base, int percent) {
+        return Math.max(0, (int) Math.round(base * percent / 100.0D));
+    }
+
     private static Vec3 offset(Vec3 pos, double amount) {
         double x = (Math.random() * 2.0D - 1.0D) * amount;
         double y = (Math.random() * 2.0D - 1.0D) * amount;
@@ -657,20 +678,20 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
         }
 
         Vec3 entry = entryPos != null ? entryPos : beamStart;
-        for (int i = 0; i < scaledCount(30); i++) {
+        for (int i = 0; i < scaledCount(smokeCount(60, Config.SMOKE_EXTERNAL_WHITE.get())); i++) {
             Vec3 velocity = offset(Vec3.ZERO, 0.025D).add(0.0D, 0.02D + random.nextDouble() * 0.03D, 0.0D);
             float scale = 3.0F + random.nextFloat() * 3.0F;
             sendParticle(serverLevel, new ShellExplosionSmokeParticleData(100 + random.nextInt(100), scale),
                     offset(entry, 0.2D), velocity);
         }
-        for (int i = 0; i < scaledCount(15); i++) {
+        for (int i = 0; i < scaledCount(smokeCount(40, Config.SMOKE_EXTERNAL_BLACK.get())); i++) {
             Vec3 velocity = offset(Vec3.ZERO, 0.015D).add(0.0D, 0.015D, 0.0D);
-            sendParticle(serverLevel, new CannonSmokeParticleData(2.0F, 1.5F + random.nextFloat(),
-                    100 + random.nextInt(80), 0.92F), offset(entry, 0.3D), velocity);
+            sendParticle(serverLevel, new ShellExplosionSmokeParticleData(120 + random.nextInt(80), 3.0F),
+                    offset(entry, 0.3D), velocity);
         }
 
         if (exitPos != null) {
-            for (int i = 0; i < scaledCount(45); i++) {
+            for (int i = 0; i < scaledCount(smokeCount(80, Config.SMOKE_EXTERNAL_WHITE.get())); i++) {
                 double distance = random.nextDouble() * 2.5D;
                 Vec3 point = exitPos.add(beamDir.scale(distance)).add(offset(Vec3.ZERO, 0.15D));
                 Vec3 velocity = beamDir.scale(0.005D + random.nextDouble() * 0.015D)
@@ -715,7 +736,14 @@ public class CumulativeShellProjectile extends AbstractBigCannonProjectile {
             if (!boxes.isEmpty()) {
                 LittleActionDestroyBoxes.removeBoxes(be, grid, boxes);
             }
-            if (be.isEmpty()) {
+            if (level() instanceof ServerLevel serverLevel) {
+                if (be.isEmpty()) {
+                    be.convertBlockToVanilla();
+                    TunnelTracker.get(serverLevel).remove(pos);
+                } else {
+                    TunnelTracker.get(serverLevel).add(pos);
+                }
+            } else if (be.isEmpty()) {
                 be.convertBlockToVanilla();
             }
         } catch (Exception e) {

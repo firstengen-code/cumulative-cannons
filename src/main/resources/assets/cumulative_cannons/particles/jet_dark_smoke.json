@@ -1,5 +1,12 @@
 {
   "textures": [
-    "cumulative_cannons:jet_smoke"
+    "cumulative_cannons:jet_smoke_0",
+    "cumulative_cannons:jet_smoke_1",
+    "cumulative_cannons:jet_smoke_2",
+    "cumulative_cannons:jet_smoke_3",
+    "cumulative_cannons:jet_smoke_4",
+    "cumulative_cannons:jet_smoke_5",
+    "cumulative_cannons:jet_smoke_6",
+    "cumulative_cannons:jet_smoke_7"
   ]
 }
