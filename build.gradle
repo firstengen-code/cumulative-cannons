@@ -120,6 +120,20 @@ dependencies {
     // Create, Create Big Cannons, LittleTiles and their required libraries.
     implementation fileTree(dir: 'libs', include: ['*.jar'], exclude: ['ponder-*.jar'])
     compileOnly files('libs/ponder-neoforge-1.0.82+mc1.21.1.jar')
+
+    // Mixins (LittleTiles/Sable render fix).
+    compileOnly 'net.fabricmc:sponge-mixin:0.15.2+mixin.0.8.7'
+    compileOnly 'io.github.llamalad7:mixinextras-neoforge:0.5.3'
+    annotationProcessor 'net.fabricmc:sponge-mixin:0.15.2+mixin.0.8.7'
+    annotationProcessor 'io.github.llamalad7:mixinextras-neoforge:0.5.3'
+    localRuntime 'io.github.llamalad7:mixinextras-neoforge:0.5.3'
+}
+
+// NeoForge picks up mixin configs through the jar manifest.
+tasks.named('jar') {
+    manifest {
+        attributes('MixinConfigs': 'cumulative_cannons.mixins.json')
+    }
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

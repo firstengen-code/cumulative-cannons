@@ -18,6 +18,7 @@ Optional:
 
 - Explosion Overhaul 0.2.3.0 - concussion and deafness near the impact
 - GeckoLib 4.9.2 and Cloth Config 15.0.140 - required by Explosion Overhaul
+- Create Aeronautics (Sable) - the jet pierces contraption blocks too; lighting inside a sublevel is handled by a light bridge plus a shade fix (see below)
 
 The exact dependency jars used for development are vendored in `libs/`.
 
@@ -25,6 +26,8 @@ The exact dependency jars used for development are vendored in `libs/`.
 
 - 2x2-pixel tunnel (1 pixel = 1/16 block), up to 25 blocks by default.
 - Ray-carved tunnel that follows diagonal shots, not just one world axis.
+- Explicit entrance hole: the outer pixel layer of the entry face is always punched, so diagonal shots do not leave an intact skin.
+- Create Aeronautics (Sable) contraptions: blocks are turned into tiles inside the plot, lit through a light bridge, and shaded exactly once (Sable applies its own directional shading in the shader, so the baked vanilla shade is suppressed).
 - Material-based penetration budget; values are data-driven.
 - Armor-piercing jet damage with distance falloff.
 - Entry and exit shockwaves.
@@ -41,7 +44,7 @@ Use Java 21:
 JAVA_HOME=/path/to/jdk-21 ./gradlew build
 ```
 
-The jar is written to `build/libs/cumulative_cannons-0.3.0.jar`.
+The jar is written to `build/libs/cumulative_cannons-0.4.0.jar`.
 
 ## Run a test client
 
@@ -82,6 +85,15 @@ Combat:
 
 Material costs can be changed in `data/cumulative_cannons/cumulative_jet_materials/materials.json` for mod defaults/tags, or per block in `config/cumulative_cannons-materials.json` (also editable from the in-game **Block penetration** screen).
 
+## Create Aeronautics (Sable)
+
+On a contraption the struck block cannot be removed normally: it lives in a Sable plot, so the mod replaces it with LittleTiles tiles and removes only the 2x2 pixel boxes. Two compatibility layers make that visible and correct:
+
+- **Light bridge** (`SableLightBridge`): LittleTiles receives a `BlockAndTintGetter` that maps plot-local coordinates to world coordinates for sky/block light.
+- **Shade fix**: Sable disables vanilla directional shading inside sublevels (`ModelBlockRenderer.getShade` returns 1.0) and applies its own shading in the shader. LittleTiles bakes through NeoForge `QuadLighter`, which would multiply the vertex color by the vanilla shade as well, so the tiles were shaded twice and looked dark. The bridge therefore returns `1.0` from `getShade` and the shader applies the only shade.
+
+Both are reflection/mixin based and do nothing when Sable is absent.
+
 ## Status
 
-Version 0.3.0. The projectile, diagonal ray carving, per-block penetration settings, in-game config screen, smoke test blocks, damage, shrapnel, bleeding, CBC effects and optional Explosion Overhaul integration are implemented. Crafting, final model/texture and multiplayer polish are still to do.
+Version 0.4.0. The projectile, diagonal ray carving with an explicit entrance hole, per-block penetration settings, in-game config screen, smoke test blocks, damage, shrapnel, bleeding, CBC effects, optional Explosion Overhaul integration and Create Aeronautics (Sable) contraption support are implemented. Crafting, final model/texture and multiplayer polish are still to do.

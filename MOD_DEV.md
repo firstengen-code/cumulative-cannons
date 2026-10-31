@@ -287,3 +287,31 @@ public final class DataGenerators {
 - Ручные JSON для рецептов, тегов, лута, моделей и blockstate.
 - Смешивать клиентские классы с общим кодом.
 - Обходить проверку `./gradlew compileJava` при сдаче изменений.
+
+## 11. Sable (Create Aeronautics): выверенные правила
+
+Постройка Sable — не `Level`: блоки лежат в plot-чанках с **локальными** координатами
+(~20M), а сам plot подключён в `ClientChunkCache`/`ServerChunkCache` основного мира.
+`be.getLevel()` остаётся основным `ClientLevel`, `be.getBlockPos()` — локальный.
+Все обращения к Sable — только через рефлексию (`SableCompat`), без compile-time
+зависимости; миксины работают по строковым targets с `remap = false`.
+
+Проверенные факты (1.21.1, sable-neoforge 2.0.6, LittleTiles 1.6.0-pre234):
+
+- `SubLevelContainer.getContainer(Level)` → `getPlot(ChunkPos)` → `plot.getChunk(ChunkPos)`;
+  для локальных координат chunk берётся напрямую, без повторного `toLocal`.
+- Затенение: `dynamic_directional_shading.ModelBlockRendererMixin` возвращает
+  `getShade = 1.0` при запекании секций саблевела и переносит направленное
+  затенение в шейдер (`vertexColor.rgb *= mix(vec3(1.0), block_brightness(...), SableEnableNormalLighting)`,
+  плюс `SableSkyLightScale` в сэмплинге лайтмапы). Поэтому:
+  - мост (`SableLightBridge`) ОБЯЗАН возвращать `getShade = 1.0`, иначе NeoForge
+    `QuadLighter` запекает ванильный shade и шейдер умножает его второй раз —
+    тайлы выглядят тёмно-серыми;
+  - `getBrightness` переводится в мировые координаты через
+    `logicalPose().transformPosition`; без этого свет 0.
+- Бейки BE внутри саблевела идут через Forge-пайплайн LT
+  (`LittleRenderPipelineForge`), Sodium-пайплайн их не видит; мост ставится
+  `@ModifyArgs` на `QuadLighter.setup(...)` и `LittleLightDataAccess.prepare(...)`.
+- Входное отверстие: луч стартует внутри блока, поэтому внешний пиксельный слой
+  грани (0 или 15 по доминирующей оси направления) нужно пробивать отдельно
+  (`punchEntryFace`), иначе на диагональных выстрелах остаётся целая «кожа».
